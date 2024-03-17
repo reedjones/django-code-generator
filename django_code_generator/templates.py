@@ -1,9 +1,10 @@
 import os
 from pathlib import Path
-
+from django.conf import settings
 from django.db import models
 from django.template import Engine, Context
-
+from django.template.loaders.app_directories import get_app_template_dirs
+from django.template.backends.base import BaseEngine
 from django_code_generator.exceptions import DjangoCodeGeneratorError, TemplateNotFound
 from django.template.loader import render_to_string
 
@@ -33,12 +34,15 @@ def walk(path):
         yield from walk(node)
 
 
-def get_template_directory(directories, template):
-    for directory in filter(lambda x: bool(x), directories):
-        template_dir = os.path.join(directory, template)
-        if os.path.lexists(template_dir):
-            return template_dir
+
+def get_template_directory(template_dirs, template):
+    # template_dirs = get_template_dirs()
+    for lookup_dir in template_dirs:
+        for dir in Path(lookup_dir).iterdir():
+            if dir.is_dir() and dir.name == template:
+                return dir
     raise TemplateNotFound(directories, template)
+
 
 
 class Template:
@@ -48,7 +52,7 @@ class Template:
 
         installed_apps = dict(get_apps())
         self.app = installed_apps.get(app_name)
-
+        print(f"{self} init with \n : {app_name} \n : {directory}")
         if self.app is None:
             raise DjangoCodeGeneratorError('App {} is not available'.format(app_name))
 
@@ -58,8 +62,8 @@ class Template:
             'code_generator_tags': 'django_code_generator.templatetags.code_generator_tags'
         })
         for node in walk(path):
-            relative_path = relative(str(path), str(node))
-            to_path = os.path.join(self.app.path, relative_path)
+            relative_path = Path(node).absolute().relative_to(Path(self.directory).absolute())
+            to_path = Path(self.app.path).joinpath(relative_path)
             if node.is_dir():
                 os.makedirs(to_path, exist_ok=True)
             else:
